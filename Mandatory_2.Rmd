@@ -1,0 +1,400 @@
+---
+title: "Mandatory 2 - STK9900"
+author: "Inger Annett Grünbeck"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+Importing libraries:  
+```{r package import}
+include = FALSE
+message = FALSE
+warning = FALSE
+
+library(rcompanion)
+library(car)
+library(data.table)
+library(ggplot2)
+library(MASS)
+
+```
+# Exercise 1  
+
+Importing the horseshoe crab dataset: 
+```{r read table}
+crabs=read.table("https://www.uio.no/studier/emner/matnat/math/STK4900/data/crabs.txt", header=TRUE, colClasses = c("factor", "numeric", "numeric", "factor", "factor"))
+
+```
+<br>  
+The variables y, color, spine were imported as factors, width and weigh as numerical variables.
+
+## 1a)
+In this dataset the outcome variable y corresponds to whether a crab had one or more satellites (binary outcome), where 1 and 0 respectively correspond to yes and no. It is therefore reasonable to use a regression model that calculates the probability of y=1 taking place, based on the models covariates. The log regression is a good fit for this:
+<br>
+$p = \frac{\exp{(\beta_0 + \beta_1 x_1)}}{1+\exp{(\beta_0 + \beta_1 x_1)}}$,
+<br>
+where p corresponds to the probability of y=1 (indicating one or more satellites), and x_1 corresponds to the crabs width. 
+
+```{r logreg crab~width}
+fit_width = glm(y~width, data=crabs, family=binomial)
+summary(fit_width)
+```
+<br>  
+## 1b)
+
+In order to find the odds ratio of presence of satellites between crabs that differ 1 cm in width, and the 95% confidence interval, I apply the code used in datalab 18:
+
+```{r crab width OR and CI}
+exp.coef.func = function(fit_width) {
+  
+  alpha = 0.05
+  coef.mat = summary(fit_width)$coef
+  
+  lower = exp(coef.mat[,1] - qnorm(p=1-alpha/2)*coef.mat[,2])
+  upper = exp(coef.mat[,1] + qnorm(p=1-alpha/2)*coef.mat[,2])
+  result = cbind(estimate=exp(coef.mat[,1]), lower, upper)
+  
+  return(result)
+}
+
+exp.coef.func(fit_width)
+```
+<br>  
+The odds ratio for the presence of satellites between crabs that differ with one cm is 1.644, meaning that the odds for the presence of satellites is more than the double for the one cm larger crab, compared to the smaller crab's odds.
+
+The relative risk is calculated using the probability for satellites occurring when the width of the crab is 0 and 1 for one cm increase, p(0) and p(1):  
+$RR = \frac{p(1)}{p(0)}$.  
+
+If p(1) and p(0) both are small, OR$\approx$RR, as the odds ratio is defined as:  
+$OR = \frac{\frac{p(1)}{[1-p(1)]}}{\frac{p(0)}{[1-p(0)]}}$.  
+
+
+We can calculate the probabilities by using the equation expressing p, mentioned in 1a). From the r output in 1b) we can see that that p(0)=0.00000433. from the r output in 1a), we can see that $\beta_1$=0.4971, which is relative low increase from $-12.3$. We can therefore assume that p(1) also will be small. It can be controlled by calculating p(1) using the equation from 1a) again:
+
+```{r crab p(1)}
+beta_0 = summary(fit_width)$coef[1]
+beta_1 = summary(fit_width)$coef[2]
+p = (exp(beta_0+beta_1))/(1 + exp(beta_0+beta_1))
+print(p)
+```
+<br>  
+The calculation confirms that both p(0) and p(1) are low, and therefore the odds ratio can be considered as an approximation to a relative risk in this situation. 
+
+## 1c)
+As the color and spine conditions have been categorized into groups, these covariates will be included as categorical variables. The width and weight are both continous variables, and therefore included as numerical variables. 
+
+
+I define one log regression model for each of the other covariates, adressing them one at a time:  
+<br>  
+<br>  
+Model based on weight as predictor:  
+```{r logreg crab~weight}
+fit_weight = glm(y~weight, data=crabs, family=binomial)
+summary(fit_weight)
+```
+<br>  
+<br>  
+Model with color as predictor:
+```{r logreg crab~color}
+fit_color = glm(y~color, data=crabs, family=binomial)
+summary(fit_color)
+```
+<br>  
+<br>  
+Model with spine as predictor:
+```{r logreg crab~spine}
+fit_spine = glm(y~spine, data=crabs, family=binomial)
+summary(fit_spine)
+```
+<br>  
+
+Based on the summary from each of the three models, weight is definitely a significant variable, due to its high z-value.  
+In the predictor "color", we can see that color 4 differs significantly from the reference color "color 1". We can also see that the models residual deviance is slightly closer to its null deviance than the weight- and width-based models' residual deviance. This could indicate that the color-based model is a worse fit than the others.  
+In the spine-based model, only the intercept is marked as significant, and its residual deviance is even closer to the null deviance than the color-based model.  
+
+Based on the numbers, I would conclude that at least weight has a significant influence on the presence of satellites. Maybe also the color variable. But I would not include the spine-variable.  
+
+We can compare all models using a deviance test and the test statistic G:  
+$G = D_0 - D,$  
+where $D_0$ is the residual deviance of a reference model and D is the residual deviance of the model we want to compare to the reference. If G is large, there is a significant difference between the models. I use the model based on width as the reference model, assuming that width has a significant effect on the presence of satellites:
+```{r anova deviance test 1}
+anova(fit_width,fit_weight,fit_color, fit_spine, test="Chisq")
+```
+<br>  
+From the comparison, we can see that only the spine-based model differs significantly from the width-based model. I would therefore assume that both weight and color might have significant effect on the satellite presence, and try to include them in a model together with width as predictors.  
+
+
+## d)
+I construct a log regression model using all variables as predictors:
+```{r logreg crab~all}
+fit_crabs = glm(y~weight+width+color+spine, data=crabs, family=binomial)
+summary(fit_crabs)
+```
+<br>  
+We can see that the constructed model has a lower residual deviance than the width-based model. This could indicate that it is as good or better fitting.   
+
+We can also see that neither width or weight are considered as significant predictors, in contrast to earlier models. It could be that either width or weight are confounding variables, and therefore effect each others' effect on the presence of satellites. It would make sense that a wider crab also is heavier. So width could be correlated both to the weight and the outcome of the model. We can check whether they are correlated:
+
+```{r correlation ww}
+cor(crabs$width, crabs$weight)
+```
+<br>  
+We can see that weight and width are highly correlated. Therefore both variables should be included in the final model. 
+
+Further, based on the model and previous knowledge I choose to cunstruct a model excluding the spine predictor. I am also constructing a model only including weight and width for comparison:
+<br>  
+Model based on weight, width and color:
+```{r logreg crab~wwc}
+fit_crabs2 = glm(y~weight+width+color, data=crabs, family=binomial)
+summary(fit_crabs2)
+```
+<br>  
+<br>  
+Model based on weight and width:
+```{r logreg crab~ww}
+fit_crabs3 = glm(y~weight+width, data=crabs, family=binomial)
+summary(fit_crabs3)
+```
+<br> 
+<br> 
+In order to compare the last two models to the model including all variables, I use a deviance test again:
+
+```{r anova 2}
+anova(fit_crabs,fit_crabs2, fit_crabs3, test="Chisq")
+```
+<br> 
+Based on this and the summaries of the models, it does not matter much whether I include spine or not. So I remove it. There is some difference between model 3 and model 1. As model 3's residual deviance is closer to the null deviance/is larger than the other models's residual deviance, I would stick to model 2 as the final model. This is because a lower residual deviance means that the model fits the data better. But it is important to note that model 2 and 3's residual deviance is not very different. 
+
+## e)
+I construct a model with all covariates and their interactions:
+```{r interactions}
+fit_interaction = glm(y~weight+width+color+spine+weight*width+weight*color+width*color+width*spine+weight*spine+color*spine, data=crabs, family=binomial)
+summary(fit_interaction)
+```
+<br>  
+From the summary we can see that only the interaction between weight and width seems significant. As only one of the spine-interactions has a high z-value (weight:spine2, z=1.4), I first remove spine and all of the variable's interactions:
+
+```{r interactions2}
+fit_interaction2 = glm(y~weight+width+color+weight*width+weight*color+width*color, data=crabs, family=binomial)
+summary(fit_interaction2)
+```
+<br>  
+Next, I'll remove the color interactions, as these all have high p-values (p>0.28). But I'll keep the main effect of color, as the color categories have a lower p-value:
+
+```{r interactions3}
+fit_interaction3 = glm(y~weight+width+color+weight*width, data=crabs, family=binomial)
+summary(fit_interaction3)
+```
+<br>  
+I'll also remove color due to the high p-values: 
+```{r interactions4}
+fit_interaction4 = glm(y~weight+width+weight*width, data=crabs, family=binomial)
+summary(fit_interaction4)
+```
+<br>  
+It does not look like there are any interactions that should be included, but to be sure I perform a deviance test again, comparing the interaction models to model "fit_crabs2" (weight, width, color) from 1d):
+```{r anova3}
+anova(fit_crabs2,fit_interaction, fit_interaction2, fit_interaction3, fit_interaction4, test="Chisq")
+```
+<br>  
+As we can see from the results of the test, even though the simple model without interactions has a higher residual deviance than some of the other models, only one of them shows any sign of significant difference (model 5). But as the p-value of model 5 is > 0.05, Im not sure I would choose this model above model 1 without interactions. 
+
+
+# Exercise 2:
+
+Importing the dataset:
+```{r read table2}
+olympic=read.table("https://www.uio.no/studier/emner/matnat/math/STK4900/data/olympic.txt",sep="\t",header=TRUE, colClasses = c("character", "integer", "integer",  "numeric", "numeric", "numeric"))
+```
+<br>  
+## a)
+When modeling a poisson regression model, we "model rate data that is predicting the number of counts over a period of time or grouping." [cited from https://www.dataquest.io/blog/tutorial-poisson-regression-in-r/]. A general poisson regression model can be described as:  
+$log(\frac{X}{n})=\beta_0 + \sum_i \beta_ix_i$,  
+where X is the event to happen and n the grouping or time period. $\beta_i$ are the regression coefficients, and $x_i$ the predictors. This can be rewritten as:  
+$log(X)=log(n)+\beta_0 + \sum_i \beta_iX_i$.  
+
+log(n) has the regression coefficient 1, and is called the "offset". We can also define the model as:
+$Y_i=Po(w_i\lambda_i)$,
+where $w_i$ corresponds to n, or the number of subjects in grouping i, and $\lambda_i$ to the poisson parameter.  
+
+In our case X represents the number of medals for a given nation in 2000, and n, or $w_i$, the logarithm of the number of athletes representing that given nation. Then $\lambda_i$ is the rate of the number of medals won in 2000 per athlete representing a nation, $\frac{X_i}{n_i}$, for each nation $i$.  
+
+Log.athletes is a sensible choice as offset, as the number of athletes representing a nation is correlated to how many medals a nation can win during the Olympics. If we for example assume that one athlete maximum can compete for one medal, the max number of possible medals won by the nation is the same as the number of athletes. Of course an athlete can compete for multiple medals, but the number of athletes representing the nation will still determine how many medals a nation can win. It is therefore reasonable to use the number of athletes representing the nation as offset/grouping in order to estimate the number of medals won by a nation.  
+
+In order for the model to hold as a poisson regression, we assume:  
+* That the rate of events $\lambda$ is constant over time  
+* The number of events in disjoint intervals are independent  
+* Events do not occur together  
+
+## b)
+Defining a poisson model using Total2000 as outcome, log.athlete as offset and the remaining variables as predictors:
+```{r poisson reg all}
+fit_olympic = glm(Total2000~offset(Log.athletes)+Total1996+Log.population+GDP.per.cap,data=olympic,family=poisson)
+summary(fit_olympic)
+```
+<br>  
+As we can see from the model output, the Log.population is not considered to be significant when estimating the number of medals for a nation in the 2000's Olympics. I therefore create a new model excluding this variable:
+```{r poisson reg 2}
+fit_olympic2 = glm(Total2000~offset(Log.athletes)+Total1996+GDP.per.cap,data=olympic,family=poisson)
+summary(fit_olympic2)
+```
+<br>  
+From the new model, we can see that all remaining predictors are considered significant for the estimation of the outcome. We can perform a deviance test in order to compare the models and see if removing log(population) has an effect on the estimation of the outcome (based on the parameter estimations of the models, I do not expect the models to differ noticeably):
+```{r anova 4}
+anova(fit_olympic, fit_olympic2, test="Chisq")
+```
+<br>  
+As we can see, there is no significant difference between the models, and I therefore choose model 2 as the final model, as this one is less complex. Based on model 2 we can examine how the estimated parameters effect the outcome:
+```{r olympic coef}
+exp.coef.func(fit_olympic2)
+```
+<br>  
+We can see that both the estimate of the Total1996 variable and the estimate of the GDP variable are close to 1, meaning the rate ratio corresponding to one units increase for a covariate is close to 1 when holding the other covariate constant. An increase of one unit for medals won in 1996 will slightly increase the medal in 2000 per athlete rate. The GDP estimate contributes slightly negatively to the rate, as the estimate is < 1. This means a nation with a high GDP will have a lower estimated medal/athlete rate in 2000 relative to another nation with a lower GDP and the same amount of medals won in 1996. 
+
+Based on this, I would conclude that wealthy nations are not more likely to win medals in competitions like the olympics, based on this dataset. 
+
+
+# Exercise 3:
+
+Importing the dataset. The variables status, treat, sex, asc and agegr are imported as categorival variables:
+```{r read data cirr}
+cirr = read.table("https://www.uio.no/studier/emner/matnat/math/STK4900/data/cirrhosis.txt", header = TRUE, colClasses = c("factor", "integer", "factor", "factor", "factor", "integer", "factor"))
+```
+```{r library}
+library(survival)
+```
+
+## a) 
+
+Kaplan-Meier Plot for treatment comparison:
+```{r KM plot treat}
+surv_treat = survfit(Surv(cirr$time, cirr$status==1)~cirr$treat, conf.type="plain")
+plot(surv_treat, lty=1:2, xlab="Time (days)", ylab="Survival")
+legend(3500,0.95,c("prednisone","placebo"), lty=1:2)
+```
+
+<br>  
+As including marks for censored patients in the plot makes the plot harder to read, I dont include the censoring marks.  
+From the plot we can see that until day ~1000, the groups behave similar. Maybe the prednisone has a slightly larger death rate in this period. After day ~1000 we can see a change; the patients given the placebo die quicker than the prednisone group. This lasts until day ~3300. After this day the groups behave similar again. After day ~4000, no patients die anymore, regardless of group. At the end of the study 20% of the patients are still included in the trial. We can also see that the placebo group has a slightly smaller median. This, together with the overall plot, indicates that there is a difference in effect of the prednisole and the placebo.  
+
+Kaplan-Meier Plot for gender comparison:
+```{r KM plot sex}
+surv_sex = survfit(Surv(cirr$time, cirr$status==1)~cirr$sex, conf.type="plain")
+plot(surv_sex, lty=1:2,xlab="Time (days)", ylab="Survival")
+legend(3500,0.95,c("female","male"), lty=1:2)
+```
+<br>  
+From the plot, we can see that male patients tend to die earlier/quicker than female patients. Their median time differ by approximately ~500 days, with the female group reporting a higher median. In the start of the study, the groups behave similar until day ~1000, but diverge after this. The reasons for this difference can be many. Either that more females were included in the prednisole group, or that they were represented differently in the age groups. So it could be a coincidence that the females survive longer.  
+
+
+Kaplan-Meier Plot for ascites status comparison:
+```{r KM plot asc}
+surv_asc = survfit(Surv(cirr$time, cirr$status==1)~cirr$asc, conf.type="plain")
+plot(surv_asc, lty=1:3,xlab="Time (days)", ylab="Survival")
+legend(3500,0.95,c("none","slight", "marked"), lty=1:3)
+```
+<br>  
+As can be expected, patients with no ascites in the start of the treatment survive longer than both patients with a slight or marked ascites. Patients with only a slight ascites at the start of the treatment also survive longer than patients in the "marked" group. Based on the plot, I would also assume that the groups have significant different medians.    
+
+Kaplan-Meier Plot for age comparison:
+```{r KM plot age}
+surv_agegr = survfit(Surv(cirr$time, cirr$status==1)~cirr$agegr, conf.type="plain")
+plot(surv_agegr, lty=1:3,xlab="Time (days)", ylab="Survival")
+legend(3500,0.95,c("<50", "=50-65", ">65"), lty=1:3)
+```
+<br>  
+From the plot, we can see that younger patients survive considerably longer than elderly people(>65). This could be because of different reasons. for example could the younger patients ascites be less developed at the start of the treatment than the older patients' ascites. Or the older patients have a weaker health in general. As could be expected, the second group's (50-65 y) survival rate lies in between the other two groups. Finally, we can also see that not only is the death rate slower in the youngest group, but they also have a (maybe significantly) higher number of survivors at the end of the experiment than the other groups (50% vs 20% and 10% in the other two groups).  
+
+## b)
+I perform the log-rank test for each of the covariates:
+
+For treatment:
+```{r log rank treatment}
+survdiff(Surv(cirr$time, cirr$status==1)~cirr$treat)
+```
+<br>  
+For gender:
+```{r log rank gender}
+survdiff(Surv(cirr$time, cirr$status==1)~cirr$sex)
+```
+
+<br>  
+For ascites status:
+```{r log rank ascite}
+survdiff(Surv(cirr$time, cirr$status==1)~cirr$asc)
+```
+
+<br>  
+For agegroup:
+```{r log rank age}
+survdiff(Surv(cirr$time, cirr$status==1)~cirr$agegr)
+```
+<br>  
+To my surprise, there was no significant difference in effect of the placebo and prednisone (p-value = 0.4). Also, as expected, the gender does not have a significant effect on the survival outcome (p-value = 0.06).  
+
+Both the ascites status and the patients' age seem to have a significant effect on the patients' survival. Both of the log-rank tests returned a p-value << 0.05. This could already be assumed based on the Kaplan-Meier plots. In the ascites status test, the group with "marked" status at the start of the treatment stands especially out, with a considerably higher difference in observed and expected deaths relative to the other groups. In the youngest group (<50) in the age test, less deaths are observed than expected. Also, more deaths than expected were observed in the oldest age group (>65). All of these observations seem reasonable.  
+
+## c)
+Constructing the Cox regression model:
+```{r cox regression}
+fit_cirr = coxph(Surv(cirr$time, cirr$status==1)~cirr$treat+cirr$sex+cirr$asc+cirr$age)
+summary(fit_cirr)
+```
+<br>  
+
+When finding the hazard ratio for men relative to women, we want to compare the proportional hazard model, or cox regression model, for men(x=1) vs women(x=0) while holding all other covariates constant:  
+$\frac{h(t|x_1,...,x_5=1)}{h(t|x_1,...,x_5=0)}= \exp(\beta_5)$.  
+
+So when finding the 95% confidence interval for the hazard ratio for men versus women, the 95% confidence interval of $\exp(\beta_5)$ is calculated. It has already been calculated as part of the cox regression output, but to make it clearer I have calulated it below using the confint function:
+```{r 95%CI cirr}
+exp(confint(fit_cirr))[5,]
+```
+<br>  
+
+TYD MODELLEN
+KOMMENTER: interpret model and conclude on the effect on prednisone
+
+
+# Exercise 4:
+Importing the dataset and libraries: 
+```{r load dataset}
+library(lme4)
+library(nlme)
+data(sleepstudy)
+```
+
+## a)
+Approach 2:
+```{r}
+day0 = sleepstudy$Reaction[sleepstudy$Days==0]
+day9 = sleepstudy$Reaction[sleepstudy$Days==9]
+diff = day9-day0
+t.test(diff)
+```
+
+## b) 
+Approach 3: Fixed effect
+```{r}
+fit_fixed = lm(Reaction~Days + factor(Subject), data=sleepstudy)
+summary(fit_fixed)
+```
+```{r}
+anova(fit_fixed)
+```
+
+## c)
+Approach 4: Random effects model
+```{r}
+fit_random = lme(Reaction~Days, random=~1|Subject, data=sleepstudy)
+summary(fit_random)
+```
+```{r}
+sd_intercept = 37.12383
+sigma = fit_random$sigma
+
+corr_reaction = sd_intercept^2/(sd_intercept^2+sigma^2)
+print(corr_reaction)
+```
+
+
+
